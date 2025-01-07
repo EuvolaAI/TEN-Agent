@@ -103,6 +103,11 @@ export const ttsModuleRegistry: Record<string, ModuleRegistry.Module> = {
         name: "polly_tts",
         type: ModuleRegistry.ModuleType.TTS,
         label: "Polly TTS",
+    },
+    volcengine_tts: {
+        name: "volcengine_tts",
+        type: ModuleRegistry.ModuleType.TTS,
+        label: "Volcengine TTS",
     }
 }
 
