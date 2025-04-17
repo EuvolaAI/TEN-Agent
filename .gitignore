@@ -36,3 +36,6 @@ pyvenv.cfg
 xdump_config
 .idea
 aibum/pkg
+aibum/.next
+playground/pkg/*
+playground/bin/*

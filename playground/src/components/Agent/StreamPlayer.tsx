@@ -25,7 +25,7 @@ export const LocalStreamPlayer = React.forwardRef(
       mute = false,
       style = {},
       fit = "cover",
-      onClick = () => {},
+      onClick = () => { },
     } = props
     const vidDiv = React.useRef(null)
 

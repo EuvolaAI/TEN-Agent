@@ -6,6 +6,7 @@ import { ICameraVideoTrack, ILocalVideoTrack, IMicrophoneAudioTrack } from "agor
 import { useAppSelector, useAppDispatch, VOICE_OPTIONS, VideoSourceType } from "@/common"
 import { ITextItem, EMessageType, IChatItem } from "@/types"
 import { rtcManager, IUserTracks, IRtcUser } from "@/manager"
+import { LocalStreamPlayer } from "@/components/Agent/StreamPlayer"
 import {
   setRoomConnected,
   addChatItem,
@@ -15,7 +16,7 @@ import {
 import AgentVoicePresetSelect from "@/components/Agent/VoicePresetSelect"
 import AgentView from "@/components/Agent/View"
 import MicrophoneBlock from "@/components/Agent/Microphone"
-import VideoBlock from "@/components/Agent/Camera"
+import { VideoBlock, RemoteVideoBlock } from "@/components/Agent/Camera"
 
 let hasInit: boolean = false
 
@@ -124,6 +125,9 @@ export default function RTCCard(props: { className?: string }) {
               <h2 className="mb-2 text-xl font-semibold">Audio & Video</h2>
             </div>
             <AgentView audioTrack={remoteuser?.audioTrack} />
+            <RemoteVideoBlock
+              remoteVideoTrack={remoteuser?.videoTrack}
+            />
           </div>
 
           {/* -- You */}
