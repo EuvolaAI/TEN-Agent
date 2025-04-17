@@ -15,7 +15,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { VIDEO_SOURCE_OPTIONS, VideoSourceType } from "@/common"
 import { MonitorIcon, MonitorXIcon } from "lucide-react"
 
-
 export const ScreenIconByStatus = (
   props: React.SVGProps<SVGSVGElement> & { active?: boolean; color?: string },
 ) => {
@@ -77,9 +76,9 @@ export function VideoDeviceWrapper(props: {
   )
 }
 
-export default function VideoBlock(props: {
-  videoSourceType:VideoSourceType,
-  onVideoSourceChange:(value: VideoSourceType) => void,
+export function VideoBlock(props: {
+  videoSourceType: VideoSourceType,
+  onVideoSourceChange: (value: VideoSourceType) => void,
   cameraTrack?: ICameraVideoTrack,
   screenTrack?: ILocalVideoTrack
 }) {
@@ -162,5 +161,70 @@ const CamSelect = (props: { videoTrack?: ICameraVideoTrack }) => {
       onChange={onChange}
       placeholder="Select a camera"
     />
+  )
+}
+
+export function RemoteVideoWrapper(props: {
+  children: React.ReactNode
+  title: string
+  Icon: (props: React.SVGProps<SVGSVGElement>) => React.ReactNode
+  onIconClick: () => void
+  isActive: boolean
+}) {
+  const { Icon, onIconClick, isActive, children } = props
+
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="text-sm font-medium">{props.title}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            className="border-secondary bg-transparent"
+            onClick={onIconClick}
+          >
+            <Icon className="h-5 w-5" />
+          </Button>
+        </div>
+      </div>
+      {children}
+    </div>
+  )
+}
+
+export function RemoteVideoBlock(props: {
+  remoteVideoTrack?: ICameraVideoTrack
+}) {
+  const { remoteVideoTrack } = props
+  const [videoMute, setVideoMute] = React.useState(false)
+
+  // React.useEffect(() => {
+  //   if (remoteVideoTrack) {
+  //     if (videoMute) {
+  //       remoteVideoTrack.stop()
+  //     } else {
+  //       remoteVideoTrack.play()
+  //     }
+  //   }
+  // }, [remoteVideoTrack, videoMute])
+
+  const onClickMute = () => {
+    // setVideoMute(!videoMute)
+  }
+
+  return (
+    <RemoteVideoWrapper
+      title="REMOTE VIDEO"
+      Icon={videoMute ? MonitorXIcon : MonitorIcon}
+      onIconClick={onClickMute}
+      isActive={!videoMute}
+    >
+      <div className="my-3 h-52 w-full overflow-hidden rounded-lg">
+        <LocalStreamPlayer videoTrack={remoteVideoTrack} />
+      </div>
+    </RemoteVideoWrapper>
   )
 }
