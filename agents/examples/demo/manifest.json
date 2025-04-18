@@ -92,6 +92,11 @@
       "type": "extension",
       "name": "openai_image_generate_tool",
       "version": "=0.1.0"
+    },
+    {
+      "type": "extension",
+      "name": "yxw_live_stream_python",
+      "version": "=0.1.0"
     }
   ]
 }

@@ -1,0 +1,43 @@
+{
+    "type": "extension",
+    "name": "yxw_live_stream_python",
+    "version": "0.1.0",
+    "dependencies": [
+        {
+            "type": "system",
+            "name": "ten_runtime_python",
+            "version": "0.8"
+        }
+    ],
+    "api": {
+        "property": {
+            "app_key": {
+                "type": "string"
+            },
+            "access_token": {
+                "type": "string"
+            },
+            "virtualman_key": {
+                "type": "string"
+            }
+        },
+        "audio_frame_in": [
+            {
+                "name": "pcm_frame",
+                "property": {}
+            }
+        ],
+        "audio_frame_out": [
+            {
+                "name": "pcm_frame",
+                "property": {}
+            }
+        ],
+        "video_frame_out": [
+            {
+                "name": "video_frame",
+                "property": {}
+            }
+        ]
+    }
+}
