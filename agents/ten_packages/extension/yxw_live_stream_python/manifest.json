@@ -23,20 +23,17 @@
         },
         "audio_frame_in": [
             {
-                "name": "pcm_frame",
-                "property": {}
+                "name": "pcm_frame"
             }
         ],
         "audio_frame_out": [
             {
-                "name": "pcm_frame",
-                "property": {}
+                "name": "pcm_frame"
             }
         ],
         "video_frame_out": [
             {
-                "name": "video_frame",
-                "property": {}
+                "name": "video_frame"
             }
         ]
     }

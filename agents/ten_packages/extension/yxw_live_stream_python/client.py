@@ -14,6 +14,8 @@ import asyncio
 import subprocess
 import numpy as np
 from typing import Optional, Tuple, AsyncGenerator
+from typing import Dict, Union, Optional, cast, Any, Callable
+import signal
 
 class YxwLiveStreamClient:
     def __init__(self,ten_env: AsyncTenEnv, app_key: str, access_token: str, virtualman_key: str):
@@ -30,6 +32,17 @@ class YxwLiveStreamClient:
         self.audio_queue: asyncio.Queue = asyncio.Queue()
         self.video_queue: asyncio.Queue = asyncio.Queue()
         self.is_running = False
+        self.loop = None
+        self._on_open:Callable = None
+        self._on_close:Callable = None
+        self._on_error:Callable = None
+        self._on_transcript:Callable = None
+    
+    def on(self,on_open:Callable,on_close:Callable,on_error:Callable,on_transcript:Callable):
+        self._on_open = on_open
+        self._on_close = on_close
+        self._on_error = on_error
+        self._on_transcript = on_transcript
 
     def _query_string(self) -> str:
         timestamp = str(int(time.time()))
@@ -90,60 +103,56 @@ class YxwLiveStreamClient:
         payload = result.get('Payload', {})
         self.session_id = payload.get('SessionId')
         self.rtmp_addr = payload.get('PlayStreamAddr')
-        self.ten_env.log_debug(f"session_id:{self.session_id},rtmp_addr:{self.rtmp_addr}")
+        self.ten_env.log_info(f"session_id:{self.session_id},rtmp_addr:{self.rtmp_addr}")
 
     async def start_ffmpeg(self) -> None:
         """启动 ffmpeg 进程读取 RTMP 流"""
         if not self.rtmp_addr:
             raise Exception("RTMP address not available")
             
-        # 使用 ffmpeg 读取 RTMP 流
-        # -i: 输入流
-        # -f: 输出格式
-        # -acodec: 音频编码器
-        # -vcodec: 视频编码器
-        # -ar: 音频采样率
-        # -ac: 音频通道数
-        # -s: 视频分辨率
+        # 创建两个管道
+        audio_pipe = subprocess.PIPE
+        video_pipe = subprocess.PIPE
+        
         cmd = [
             'ffmpeg',
             '-i', self.rtmp_addr,
-            '-f', 's16le',  # 音频输出格式
-            '-acodec', 'pcm_s16le',  # 音频编码器
-            '-ar', '16000',  # 音频采样率
-            '-ac', '1',  # 单声道
-            '-f', 'rawvideo',  # 视频输出格式
-            '-vcodec', 'rawvideo',  # 视频编码器
-            '-s', '1920x1080',  # 视频分辨率
-            '-pix_fmt', 'rgba',  # 像素格式
-            '-'
+            '-map', '0:a', '-f', 's16le', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', 'pipe:1',
+            '-map', '0:v', '-f', 'rawvideo', '-vcodec', 'rawvideo', '-s', '1920x1080', '-pix_fmt', 'rgba', 'pipe:2'
         ]
         
         self.ffmpeg_process = subprocess.Popen(
             cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=audio_pipe,
+            stderr=video_pipe,
             bufsize=10**8
         )
         
         self.is_running = True
-        asyncio.create_task(self._read_ffmpeg_output())
+        asyncio.create_task(self._read_audio_output())
+        asyncio.create_task(self._read_video_output())
 
-    async def _read_ffmpeg_output(self) -> None:
-        """读取 ffmpeg 输出并分离音视频数据"""
+    async def _read_audio_output(self) -> None:
+        """读取音频数据"""
         try:
             while self.is_running and self.ffmpeg_process and self.ffmpeg_process.poll() is None:
-                # 读取音频数据 (16000Hz, 16bit, 单声道)
                 audio_data = self.ffmpeg_process.stdout.read(320)  # 10ms 的音频数据
                 if audio_data:
                     await self.audio_queue.put(audio_data)
-                
-                # 读取视频数据 (1920x1080 RGBA)
-                video_data = self.ffmpeg_process.stdout.read(1920 * 1080 * 4)
+        except Exception as e:
+            print(f"Error reading audio output: {e}")
+        finally:
+            self.is_running = False
+
+    async def _read_video_output(self) -> None:
+        """读取视频数据"""
+        try:
+            while self.is_running and self.ffmpeg_process and self.ffmpeg_process.poll() is None:
+                video_data = self.ffmpeg_process.stderr.read(1920 * 1080 * 4)
                 if video_data:
                     await self.video_queue.put(video_data)
         except Exception as e:
-            print(f"Error reading ffmpeg output: {e}")
+            print(f"Error reading video output: {e}")
         finally:
             self.is_running = False
 
@@ -169,6 +178,7 @@ class YxwLiveStreamClient:
 
     async def start(self) -> None:
         """启动客户端，包括创建会话、等待会话就绪、启动会话和连接 WebSocket"""
+        self.loop = asyncio.get_event_loop()  
         # 创建会话
         await self.create_session()
         
@@ -184,16 +194,19 @@ class YxwLiveStreamClient:
         
         # 连接 WebSocket
         await self.connect_websocket()
-        
+        if self._on_open is not None:
+            await self._on_open()
+
+        self.loop.create_task(self.receive())
         # 启动 ffmpeg 读取 RTMP 流
-        await self.start_ffmpeg()
+        # await self.start_ffmpeg()
 
     async def close(self) -> None:
         """关闭客户端，包括关闭 WebSocket 连接和会话"""
         self.is_running = False
         
         if self.ffmpeg_process:
-            self.ffmpeg_process.terminate()
+            self.ffmpeg_process.send_signal(signal.SIGINT)
             try:
                 self.ffmpeg_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
@@ -204,6 +217,8 @@ class YxwLiveStreamClient:
         await self.close_session()
         self.session_id = None
         self.rtmp_addr = None
+        if self._on_close is not None:
+            await self._on_close()
 
     async def query_session_status(self) -> int:
         """查询会话状态"""
@@ -292,6 +307,11 @@ class YxwLiveStreamClient:
         """发送音频消息"""
         if not self.websocket:
             raise Exception("WebSocket 未连接")
+        audio = ""
+        if is_final:
+            audio = ""
+        else :
+            audio = base64.b64encode(audio_data).decode('utf-8')
             
         params = {
             'Header': {},
@@ -300,30 +320,9 @@ class YxwLiveStreamClient:
                 "SessionId": self.session_id,
                 "Command": "SEND_AUDIO",
                 "Data": {
-                    "Audio": base64.b64encode(audio_data).decode('utf-8'),
+                    "Audio": audio,
                     "Seq": seq,
                     "IsFinal": is_final
-                }
-            }
-        }
-        
-        await self.websocket.send(json.dumps(params))
-
-    async def send_audio_finish(self, seq: int) -> None:
-        """发送音频结束标记"""
-        if not self.websocket:
-            raise Exception("WebSocket 未连接")
-            
-        params = {
-            'Header': {},
-            'Payload': {
-                "ReqId": self._get_uuid(),
-                "SessionId": self.session_id,
-                "Command": "SEND_AUDIO",
-                "Data": {
-                    "Audio": "",
-                    "Seq": seq,
-                    "IsFinal": True
                 }
             }
         }
@@ -344,3 +343,21 @@ class YxwLiveStreamClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """异步上下文管理器退出"""
         await self.close() 
+
+    async def receive(self):
+        while True:
+            try:
+                message = await self.websocket.recv()
+                
+                if self._on_transcript is not None:
+                    await self._on_transcript(message)
+            except websockets.exceptions.ConnectionClosed as e:
+                print("连接已关闭")
+                if self._on_error is not None:
+                    await self._on_error(e)
+                break
+            except Exception as e:
+                print(f"接收消息时发生错误: {e}")
+                if self._on_error is not None:
+                    await self._on_error(e)
+                break
