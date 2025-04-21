@@ -25,8 +25,8 @@
               "publish_video_frame_rate": 30,
               "publish_video_encoded": false,
               "publish_video_auto_publishing": false,
-              "subscribe_video": false,
-              "subscribe_video_pix_fmt": 2,
+              "subscribe_video": true,
+              "subscribe_video_pix_fmt": 6,
               "subscribe_video_encoded": false
             }
           },
@@ -99,7 +99,7 @@
             "property": {
               "app_key": "4fd1992b3bd24e098548ec4d02b04f6b",
               "access_token": "c098c15097774b988f20cfcbbe503c7d",
-              "virtualman_key": "7f273b729a324a088a074409847df980"
+              "virtualman_key": "d6b2ca4b722b47b2ac35db61b38c07b9"
             }
           }
         ],
@@ -184,6 +184,29 @@
                 "name": "flush",
                 "dest": [
                   {
+                    "extension": "yxw_live_stream"
+                  }
+                ]
+              }
+            ],
+            "audio_frame": [
+              {
+                "name": "pcm_frame",
+                "dest": [
+                  {
+                    "extension": "yxw_live_stream"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "extension": "yxw_live_stream",
+            "cmd": [
+              {
+                "name": "flush",
+                "dest": [
+                  {
                     "extension": "agora_rtc"
                   }
                 ]
@@ -195,9 +218,6 @@
                 "dest": [
                   {
                     "extension": "agora_rtc"
-                  },
-                  {
-                    "extension": "yxw_live_stream"
                   }
                 ]
               }
