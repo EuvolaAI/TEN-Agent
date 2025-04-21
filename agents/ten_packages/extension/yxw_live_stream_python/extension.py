@@ -15,6 +15,7 @@ from ten_ai_base.video import AsyncVideoBaseExtension
 from typing import Optional
 from ten_ai_base.config import BaseConfig
 from .client import YxwLiveStreamClient
+from ten.video_frame import VideoFrame, PixelFmt
 import asyncio
 import time
 from dataclasses import dataclass
@@ -87,7 +88,7 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
             
             # 启动读取音视频数据的任务
             self.audio_task = asyncio.create_task(self._read_audio_frames(ten_env))
-            # self.video_task = asyncio.create_task(self._read_video_frames(ten_env))
+            self.video_task = asyncio.create_task(self._read_video_frames(ten_env))
             
         except Exception:
             ten_env.log_error(f"on_start failed: {traceback.format_exc()}")
@@ -95,7 +96,7 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
     async def _read_audio_frames(self, ten_env: AsyncTenEnv) -> None:
         """读取音频帧并发送"""
         try:
-            # with open('/app/output.pcm', 'ab') as audio_file:
+            # with open('/app/audio.pcm', 'ab') as audio_file:
             #     while self.client.is_running:
             #         audio_data = await self.client.read_audio_frame()
             #         try:
@@ -105,7 +106,7 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
 
             #                 # 写入当前帧的音频数据
             #                 audio_file.write(audio_data)
-            #                 ten_env.log_info(f'已将 {len(audio_data)} 字节的PCM数据追加到 /app/output.pcm')
+            #                 ten_env.log_info(f'已将 {len(audio_data)} 字节的PCM数据追加到 /app/audio.pcm')
             #         except Exception as e:
             #             ten_env.log_error(f"写入音频数据到文件时出错: {traceback.format_exc()}")
             #     ten_env.log_info(f'_read_audio_frames over')
@@ -118,10 +119,25 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
     async def _read_video_frames(self, ten_env: AsyncTenEnv) -> None:
         """读取视频帧并发送"""
         try:
-            async for video_data in self.client.read_video_frame():
-                await self.send_video_out(ten_env, video_data, width=1920, height=1080)
+            # with open('/app/video.h264', 'ab') as video_file:
+            #     while self.client.is_running:
+            #         video_data = await self.client.read_video_frame()
+            #         try:
+            #             # 使用追加模式打开文件，确保数据被添加到文件末尾
+            #             # 频繁打开关闭文件可能导致性能问题，但在这种情况下是必要的
+            #             # 因为我们需要确保每帧数据都被正确写入，即使程序意外终止
+
+            #                 # 写入当前帧的音频数据
+            #                 video_file.write(video_data)
+            #                 ten_env.log_info(f'已将 {len(video_data)} 字节的PCM数据追加到 /app/video.h264')
+            #         except Exception as e:
+            #             ten_env.log_error(f"写入音频数据到文件时出错: {traceback.format_exc()}")
+            #     ten_env.log_info(f'_read_video_frames over')
+            while self.client.is_running:
+                video_data = await self.client.read_video_frame()()
+                await self.send_video_out(ten_env=ten_env, video_data=video_data,width=1080,height=1920,format="I420")
         except Exception as e:
-            ten_env.log_error(f"Error reading video frames: {traceback.format_exc()}")
+            ten_env.log_error(f"Error reading audio frames: {traceback.format_exc()}")
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         await super().on_stop(ten_env)
