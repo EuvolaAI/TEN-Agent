@@ -47,6 +47,7 @@ class AsyncVideoBaseExtension(AsyncExtension, ABC):
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         await super().on_stop(ten_env)
+        self.loop_task.cancel()
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         await super().on_deinit(ten_env)
@@ -55,7 +56,6 @@ class AsyncVideoBaseExtension(AsyncExtension, ABC):
         cmd_name = cmd.get_name()
         async_ten_env.log_info(f"on_cmd name: {cmd_name}")
         if cmd_name == CMD_IN_FLUSH:
-            await self.on_cancel_tts(async_ten_env)
             await self.flush_input_items(async_ten_env)
             await async_ten_env.send_cmd(Cmd.create(CMD_OUT_FLUSH))
             async_ten_env.log_info("on_cmd sent flush")

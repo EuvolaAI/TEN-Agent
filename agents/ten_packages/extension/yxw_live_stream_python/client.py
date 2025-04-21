@@ -37,12 +37,14 @@ class YxwLiveStreamClient:
         self._on_close:Callable = None
         self._on_error:Callable = None
         self._on_transcript:Callable = None
+        # self._on_receive_audio:Callable = None
     
     def on(self,on_open:Callable,on_close:Callable,on_error:Callable,on_transcript:Callable):
         self._on_open = on_open
         self._on_close = on_close
         self._on_error = on_error
         self._on_transcript = on_transcript
+        # self._on_receive_audio = on_receive_audio
 
     def _query_string(self) -> str:
         timestamp = str(int(time.time()))
@@ -117,32 +119,42 @@ class YxwLiveStreamClient:
         cmd = [
             'ffmpeg',
             '-i', self.rtmp_addr,
-            '-map', '0:a', '-f', 's16le', '-acodec', 'pcm_s16le', '-ar', '16000', '-ac', '1', 'pipe:1',
-            '-map', '0:v', '-f', 'rawvideo', '-vcodec', 'rawvideo', '-s', '1920x1080', '-pix_fmt', 'rgba', 'pipe:2'
+            '-map', '0:a',
+            '-f', 's16le',
+            '-acodec', 'pcm_s16le',
+            '-ar', '16000',
+            '-ac', '1',
+            'pipe:1'
         ]
         
         self.ffmpeg_process = subprocess.Popen(
             cmd,
             stdout=audio_pipe,
             stderr=video_pipe,
-            bufsize=10**8
+            bufsize=50 * 1024 * 1024
         )
         
         self.is_running = True
         asyncio.create_task(self._read_audio_output())
-        asyncio.create_task(self._read_video_output())
+        # asyncio.create_task(self._read_video_output())
 
     async def _read_audio_output(self) -> None:
         """读取音频数据"""
-        try:
-            while self.is_running and self.ffmpeg_process and self.ffmpeg_process.poll() is None:
-                audio_data = self.ffmpeg_process.stdout.read(320)  # 10ms 的音频数据
-                if audio_data:
-                    await self.audio_queue.put(audio_data)
-        except Exception as e:
-            print(f"Error reading audio output: {e}")
-        finally:
-            self.is_running = False
+        while self.is_running:
+            if not self.ffmpeg_process:
+                self.ten_env.log_error("FFmpeg 进程不存在")
+                break
+            if self.ffmpeg_process.poll() is not None:
+                self.ten_env.log_error(f"FFmpeg 进程已退出，返回码: {self.ffmpeg_process.poll()}")
+                break
+            audio_data = await asyncio.get_event_loop().run_in_executor(
+                None, 
+                self.ffmpeg_process.stdout.read, 
+                5120
+            ) # 100ms 的音频数据
+            self.ten_env.log_info(f'_read_audio_output,len:{len(audio_data)}')
+            if audio_data:
+                await self.audio_queue.put(audio_data)
 
     async def _read_video_output(self) -> None:
         """读取视频数据"""
@@ -150,21 +162,18 @@ class YxwLiveStreamClient:
             while self.is_running and self.ffmpeg_process and self.ffmpeg_process.poll() is None:
                 video_data = self.ffmpeg_process.stderr.read(1920 * 1080 * 4)
                 if video_data:
+                    
                     await self.video_queue.put(video_data)
         except Exception as e:
             print(f"Error reading video output: {e}")
-        finally:
-            self.is_running = False
 
-    async def read_audio_frame(self) -> AsyncGenerator[bytes, None]:
+    async def read_audio_frame(self) -> bytes:
         """读取音频帧"""
-        while self.is_running:
-            try:
-                audio_data = await self.audio_queue.get()
-                yield audio_data
-            except Exception as e:
-                print(f"Error reading audio frame: {e}")
-                break
+        try:
+            audio_data = await self.audio_queue.get()
+            return audio_data
+        except Exception as e:
+            print(f"Error reading audio frame: {e}")
 
     async def read_video_frame(self) -> AsyncGenerator[bytes, None]:
         """读取视频帧"""
@@ -199,7 +208,7 @@ class YxwLiveStreamClient:
 
         self.loop.create_task(self.receive())
         # 启动 ffmpeg 读取 RTMP 流
-        # await self.start_ffmpeg()
+        await self.start_ffmpeg()
 
     async def close(self) -> None:
         """关闭客户端，包括关闭 WebSocket 连接和会话"""
@@ -291,6 +300,7 @@ class YxwLiveStreamClient:
         )
         
         result = response.json()
+        self.ten_env.log_info(result.json())
         if result.get('Header', {}).get('Code') != 0:
             raise Exception(f"关闭会话失败: {result}")
 

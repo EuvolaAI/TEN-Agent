@@ -45,7 +45,6 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         await super().on_init(ten_env)
         self.ten_env=ten_env
-        ten_env.log_info("yxw_live_stream on_init")
         self.config = await YxwLiveStreamConfig.create_async(ten_env=ten_env)
         ten_env.log_info(f"yxw_live_stream config: {self.config}")
         if not self.config.app_key:
@@ -78,6 +77,7 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
 
         # connect to websocket
         self.client.on(on_open = on_open,on_close=on_close,on_error=on_error,on_transcript=on_message)
+
         await self.client.start()
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
@@ -86,7 +86,7 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
             ten_env.log_debug("on_start")
             
             # 启动读取音视频数据的任务
-            # self.audio_task = asyncio.create_task(self._read_audio_frames(ten_env))
+            self.audio_task = asyncio.create_task(self._read_audio_frames(ten_env))
             # self.video_task = asyncio.create_task(self._read_video_frames(ten_env))
             
         except Exception:
@@ -95,7 +95,22 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
     async def _read_audio_frames(self, ten_env: AsyncTenEnv) -> None:
         """读取音频帧并发送"""
         try:
-            async for audio_data in self.client.read_audio_frame():
+            # with open('/app/output.pcm', 'ab') as audio_file:
+            #     while self.client.is_running:
+            #         audio_data = await self.client.read_audio_frame()
+            #         try:
+            #             # 使用追加模式打开文件，确保数据被添加到文件末尾
+            #             # 频繁打开关闭文件可能导致性能问题，但在这种情况下是必要的
+            #             # 因为我们需要确保每帧数据都被正确写入，即使程序意外终止
+
+            #                 # 写入当前帧的音频数据
+            #                 audio_file.write(audio_data)
+            #                 ten_env.log_info(f'已将 {len(audio_data)} 字节的PCM数据追加到 /app/output.pcm')
+            #         except Exception as e:
+            #             ten_env.log_error(f"写入音频数据到文件时出错: {traceback.format_exc()}")
+            #     ten_env.log_info(f'_read_audio_frames over')
+            while self.client.is_running:
+                audio_data = await self.client.read_audio_frame()
                 await self.send_audio_out(ten_env, audio_data)
         except Exception as e:
             ten_env.log_error(f"Error reading audio frames: {traceback.format_exc()}")
@@ -109,12 +124,13 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
             ten_env.log_error(f"Error reading video frames: {traceback.format_exc()}")
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
-        # if self.audio_task:
-        #     self.audio_task.cancel()
-        #     try:
-        #         await self.audio_task
-        #     except asyncio.CancelledError:
-        #         pass
+        await super().on_stop(ten_env)
+        if self.audio_task:
+            self.audio_task.cancel()
+            try:
+                await self.audio_task
+            except asyncio.CancelledError:
+                pass
                 
         # if self.video_task:
         #     self.video_task.cancel()
@@ -122,78 +138,15 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
         #         await self.video_task
         #     except asyncio.CancelledError:
         #         pass
-                
+        ten_env.log_info("yxw_live_stream on_stop")
         if self.client:
             await self.client.close()
             self.client = None
-
-        await super().on_stop(ten_env)
         ten_env.log_debug("on_stop")
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         await super().on_deinit(ten_env)
         ten_env.log_debug("on_deinit")
-
-    # async def on_audio_frame(self, ten_env: AsyncTenEnv, frame: AudioFrame) -> None:
-    #     """处理音频帧"""
-    #     async with self.lock:
-    #         try:
-    #             frame_buf = frame.get_buf()
-    #             if not frame_buf:
-    #                 ten_env.log_warn("empty audio frame detected")
-    #                 return
-    #             # 将PCM音频数据写入到文件
-    #             # try:
-    #             #     # 使用追加模式打开文件，确保数据被添加到文件末尾
-    #             #     # 频繁打开关闭文件可能导致性能问题，但在这种情况下是必要的
-    #             #     # 因为我们需要确保每帧数据都被正确写入，即使程序意外终止
-    #             #     with open('/app/audio.pcm', 'ab') as audio_file:
-    #             #         # 写入当前帧的音频数据
-    #             #         audio_file.write(frame_buf)
-    #             #         ten_env.log_info(f'已将 {len(frame_buf)} 字节的PCM数据追加到 /app/audio.mp3')
-    #             # except Exception as e:
-    #             #     ten_env.log_error(f"写入音频数据到文件时出错: {traceback.format_exc()}")
-
-    #             current_time = time.time() * 1000  # 转换为毫秒
-                
-    #             # 检查是否超时
-    #             # if current_time - self.last_data_time > self.SILENCE_TIMEOUT and len(self.frame_buff) == 0:
-    #             #     # 检查 WebSocket 连接状态
-    #             #     if self.client and self.client.websocket and not self.client.websocket.closed:
-    #             #         self.seq += 1
-    #             #         # 发送结束包
-    #             #         await self.client.send_audio_message(audio_data=bytearray(), seq=self.seq,is_final=True)
-    #             #         self.seq = 0
-    #             #     return
-
-    #             # 更新最后数据时间
-    #             self.last_data_time = current_time
-
-    #             # 将新数据添加到缓冲区
-    #             self.frame_buff.extend(frame_buf)
-                
-    #             # 如果缓冲区数据足够一个分片，且满足发送间隔要求
-    #             while len(self.frame_buff) >= self.SEGMENT_SIZE:
-    #                 # 检查发送间隔
-    #                 if current_time - self.last_send_time < self.MIN_INTERVAL:
-    #                     break
-                        
-    #                 # 获取一个分片
-    #                 segment = bytes(self.frame_buff[:self.SEGMENT_SIZE])
-    #                 self.frame_buff = self.frame_buff[self.SEGMENT_SIZE:]
-                        
-    #                 # 检查 WebSocket 连接状态
-    #                 if self.client and self.client.websocket and not self.client.websocket.closed:
-    #                     self.seq += 1
-    #                     ten_env.log_info(f'发送数据:{len(segment)}')
-    #                     # 发送音频数据
-    #                     await self.client.send_audio_message(audio_data=segment, seq=self.seq,is_final=False)
-                        
-    #                     # 更新最后发送时间
-    #                     self.last_send_time = current_time
-            
-    #         except Exception as e:
-    #             ten_env.log_error(f"error processing audio frame: {traceback.format_exc()}") 
         
     async def process_audio(self, ten_env: AsyncTenEnv, audio:bytearray) -> None:
         try:
@@ -202,10 +155,10 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
             #     # 使用追加模式打开文件，确保数据被添加到文件末尾
             #     # 频繁打开关闭文件可能导致性能问题，但在这种情况下是必要的
             #     # 因为我们需要确保每帧数据都被正确写入，即使程序意外终止
-            #     with open('/app/audio.pcm', 'ab') as audio_file:
+            #     with open('/app/input.pcm', 'ab') as audio_file:
             #             # 写入当前帧的音频数据
             #             audio_file.write(audio)
-            #             ten_env.log_info(f'已将 {len(audio)} 字节的PCM数据追加到 /app/audio.mp3')
+            #             ten_env.log_info(f'已将 {len(audio)} 字节的PCM数据追加到 /app/input.mp3')
             # except Exception as e:
             #     ten_env.log_error(f"写入音频数据到文件时出错: {traceback.format_exc()}")
             current_time = time.time() * 1000  # 转换为毫秒
@@ -225,7 +178,7 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
                     
                 if self.client and self.client.websocket and not self.client.websocket.closed:
                     self.seq += 1
-                    ten_env.log_info(f'发送数据: 长度={self.frame_lenth}, 时长={audio_duration}ms')
+                    # ten_env.log_info(f'process_audio:{self.frame_lenth}, 时长={audio_duration}ms')
                     await self.client.send_audio_message(audio_data=bytes(self.frame_buff[:]), seq=self.seq,is_final=False)
                     # 这里先暂时强制每次发完请求间隔120ms
                     await asyncio.sleep(0.12)
