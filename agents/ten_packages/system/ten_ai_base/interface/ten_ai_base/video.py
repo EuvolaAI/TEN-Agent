@@ -17,6 +17,7 @@ from ten.audio_frame import AudioFrame, AudioFrameDataFmt
 from ten.video_frame import VideoFrame, PixelFmt
 from ten.cmd import Cmd
 from ten.cmd_result import CmdResult, StatusCode
+from .const import CMD_IN_FLUSH, CMD_OUT_FLUSH, DATA_IN_PROPERTY_END_OF_SEGMENT, DATA_IN_PROPERTY_TEXT, DATA_IN_PROPERTY_QUIET
 from .helper import AsyncQueue, get_property_bool, get_property_string
 
 class AsyncVideoBaseExtension(AsyncExtension, ABC):
@@ -29,18 +30,53 @@ class AsyncVideoBaseExtension(AsyncExtension, ABC):
         super().__init__(name)
         self.leftover_video_bytes = b''
         self.leftover_audio_bytes = b''
+        self.lock = asyncio.Lock()
+        self.queue = AsyncQueue()
+        self.current_task = None
+        self.loop_task = None
 
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         await super().on_init(ten_env)
 
     async def on_start(self, ten_env: AsyncTenEnv) -> None:
         await super().on_start(ten_env)
+        if self.loop_task is None:
+            self.loop = asyncio.get_event_loop()
+            self.loop_task = self.loop.create_task(
+                self._process_queue(ten_env))
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         await super().on_stop(ten_env)
 
     async def on_deinit(self, ten_env: AsyncTenEnv) -> None:
         await super().on_deinit(ten_env)
+    
+    async def on_cmd(self, async_ten_env: AsyncTenEnv, cmd: Cmd) -> None:
+        cmd_name = cmd.get_name()
+        async_ten_env.log_info(f"on_cmd name: {cmd_name}")
+        if cmd_name == CMD_IN_FLUSH:
+            await self.on_cancel_tts(async_ten_env)
+            await self.flush_input_items(async_ten_env)
+            await async_ten_env.send_cmd(Cmd.create(CMD_OUT_FLUSH))
+            async_ten_env.log_info("on_cmd sent flush")
+            status_code, detail = StatusCode.OK, "success"
+            cmd_result = CmdResult.create(status_code)
+            cmd_result.set_property_string("detail", detail)
+            await async_ten_env.return_result(cmd_result, cmd)
+        else:
+            status_code, detail = StatusCode.OK, "success"
+            cmd_result = CmdResult.create(status_code)
+            cmd_result.set_property_string("detail", detail)
+            await async_ten_env.return_result(cmd_result, cmd)
+    
+    async def flush_input_items(self, ten_env: AsyncTenEnv):
+        """Flushes the self.queue and cancels the current task."""
+        # Flush the queue using the new flush method
+        await self.queue.flush()
+        # Cancel the current task if one is running
+        if self.current_task:
+            ten_env.log_info("Cancelling the current task during flush.")
+            self.current_task.cancel()
 
     async def send_audio_out(self, ten_env: AsyncTenEnv, audio_data: bytes, **args: TTSPcmOptions) -> None:
         """Send audio data to output."""
@@ -89,3 +125,40 @@ class AsyncVideoBaseExtension(AsyncExtension, ABC):
             await ten_env.send_video_frame(f)
         except Exception as e:
             ten_env.log_error(f"error sending video frame: {traceback.format_exc()}") 
+        
+    async def on_audio_frame(self, ten_env: AsyncTenEnv, frame: AudioFrame) -> None:
+        """处理音频帧"""
+        async with self.lock:
+            try:
+                frame_buf = frame.get_buf()
+                if not frame_buf:
+                    ten_env.log_warn("empty audio frame detected")
+                    return
+                await self.queue.put(frame_buf)
+            
+            except Exception as e:
+                ten_env.log_error(f"error processing audio frame: {traceback.format_exc()}") 
+    
+    async def _process_queue(self, ten_env: AsyncTenEnv):
+        """Asynchronously process queue items one by one."""
+        while True:
+            # Wait for an item to be available in the queue
+            audio = await self.queue.get()
+            try:
+                self.current_task = asyncio.create_task(
+                    self.process_audio(ten_env=ten_env,audio=audio))
+                await self.current_task  # Wait for the current task to finish or be cancelled
+                self.current_task = None
+            except asyncio.CancelledError:
+                ten_env.log_info(f"Task cancelled")
+            except Exception as err:
+                ten_env.log_error(
+                    f"Task failed, err: {traceback.format_exc()}")
+    
+    @abstractmethod
+    async def process_audio(self, ten_env: AsyncTenEnv, audio:bytearray) -> None:
+        """
+        Called when a new input item is available in the queue. Override this method to implement the TTS request logic.
+        Use send_audio_out to send the audio data to the output when the audio data is ready.
+        """
+        pass

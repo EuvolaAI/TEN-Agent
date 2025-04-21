@@ -206,7 +206,7 @@ func (s *HttpServer) handlerPing(c *gin.Context) {
 		return
 	}
 
-	slog.Info("handlerPing start", "channelName", req.ChannelName, "requestId", req.RequestId, logTag)
+	// slog.Info("handlerPing start", "channelName", req.ChannelName, "requestId", req.RequestId, logTag)
 
 	if strings.TrimSpace(req.ChannelName) == "" {
 		slog.Error("handlerPing channel empty", "channelName", req.ChannelName, "requestId", req.RequestId, logTag)

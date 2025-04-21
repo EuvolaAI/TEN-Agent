@@ -19,15 +19,15 @@
               "subscribe_audio": true,
               "publish_audio": true,
               "publish_data": true,
-              "publish_video": true,
-              "subscribe_video": true,
-              "subscribe_video_pix_fmt": 2,
-              "subscribe_video_encoded": false,
+              "publish_video": false,
               "publish_video_width": 640,
               "publish_video_height": 480,
               "publish_video_frame_rate": 30,
               "publish_video_encoded": false,
-              "publish_video_auto_publishing": false
+              "publish_video_auto_publishing": false,
+              "subscribe_video": false,
+              "subscribe_video_pix_fmt": 2,
+              "subscribe_video_encoded": false
             }
           },
           {
@@ -71,11 +71,18 @@
               "cluster": "volcano_tts",
               "pitch_ratio": 1,
               "request_timeout_seconds": 30,
-              "sample_rate": 24000,
+              "sample_rate": 16000,
               "speed_ratio": 1.1,
               "timbre": "zh_female_wanwanxiaohe_moon_bigtts",
               "volumn_ratio": 1
             }
+          },
+          {
+            "type": "extension",
+            "name": "interrupt_detector",
+            "addon": "interrupt_detector_python",
+            "extension_group": "default",
+            "property": {}
           },
           {
             "type": "extension",
@@ -115,24 +122,6 @@
                     "extension": "llm"
                   }
                 ]
-              },
-              {
-                "name": "on_connection_failure",
-                "dest": [
-                  {
-                    "extension": "llm"
-                  }
-                ]
-              }
-            ],
-            "data": [
-              {
-                "name": "text_data",
-                "dest": [
-                  {
-                    "extension": "message_collector"
-                  }
-                ]
               }
             ],
             "audio_frame": [
@@ -141,6 +130,22 @@
                 "dest": [
                   {
                     "extension": "stt"
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "extension": "stt",
+            "data": [
+              {
+                "name": "text_data",
+                "dest": [
+                  {
+                    "extension": "interrupt_detector"
+                  },
+                  {
+                    "extension": "message_collector"
                   }
                 ]
               }
@@ -179,7 +184,7 @@
                 "name": "flush",
                 "dest": [
                   {
-                    "extension": "yxw_live_stream"
+                    "extension": "agora_rtc"
                   }
                 ]
               }
@@ -188,6 +193,9 @@
               {
                 "name": "pcm_frame",
                 "dest": [
+                  {
+                    "extension": "agora_rtc"
+                  },
                   {
                     "extension": "yxw_live_stream"
                   }
@@ -209,23 +217,23 @@
             ]
           },
           {
-            "extension": "yxw_live_stream",
-            "audio_frame": [
+            "extension": "interrupt_detector",
+            "cmd": [
               {
-                "name": "pcm_frame",
+                "name": "flush",
                 "dest": [
                   {
-                    "extension": "agora_rtc"
+                    "extension": "llm"
                   }
                 ]
               }
             ],
-            "video_frame": [
+            "data": [
               {
-                "name": "video_frame",
+                "name": "text_data",
                 "dest": [
                   {
-                    "extension": "agora_rtc"
+                    "extension": "llm"
                   }
                 ]
               }
@@ -347,14 +355,6 @@
                     "extension": "llm"
                   }
                 ]
-              },
-              {
-                "name": "on_connection_failure",
-                "dest": [
-                  {
-                    "extension": "llm"
-                  }
-                ]
               }
             ],
             "audio_frame": [
@@ -411,14 +411,6 @@
                   {
                     "extension": "tts"
                   },
-                  {
-                    "extension": "message_collector"
-                  }
-                ]
-              },
-              {
-                "name": "content_data",
-                "dest": [
                   {
                     "extension": "message_collector"
                   }
