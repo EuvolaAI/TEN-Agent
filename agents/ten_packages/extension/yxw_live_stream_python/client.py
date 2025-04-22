@@ -29,14 +29,25 @@ class YxwLiveStreamClient:
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
         self.rtmp_addr: Optional[str] = None
         self.ffmpeg_process: Optional[subprocess.Popen] = None
-        self.audio_queue: asyncio.Queue = asyncio.Queue()
-        self.video_queue: asyncio.Queue = asyncio.Queue()
+        self.ffmpeg_video_process: Optional[subprocess.Popen] = None
+        self.audio_queue: asyncio.Queue = asyncio.Queue(maxsize=30)
+        self.video_queue: asyncio.Queue = asyncio.Queue(maxsize=30)
         self.is_running = False
         self.loop = None
         self._on_open:Callable = None
         self._on_close:Callable = None
         self._on_error:Callable = None
         self._on_transcript:Callable = None
+        self.start_time = time.time_ns()  # 记录开始时间
+        self.audio_frame_count = 0
+        self.video_frame_count = 0
+        self.sample_rate = 16000
+        self.bytes_per_sample = 2
+        self.number_of_channels = 1
+        self.width = 540
+        self.height = 960
+        self.frame_rate = 25
+        self.frame_interval =int(1000 * 1000 * 1000 / self.frame_rate)
         # self._on_receive_audio:Callable = None
     
     def on(self,on_open:Callable,on_close:Callable,on_error:Callable,on_transcript:Callable):
@@ -111,32 +122,44 @@ class YxwLiveStreamClient:
         """启动 ffmpeg 进程读取 RTMP 流"""
         if not self.rtmp_addr:
             raise Exception("RTMP address not available")
-            
-        # 创建两个管道
-        audio_pipe = subprocess.PIPE
-        video_pipe = subprocess.PIPE
         
-        cmd = [
+        cmd_audio = [
             'ffmpeg',
             '-i', self.rtmp_addr,
             '-map', '0:a',  # 音频流
             '-f', 's16le',
             '-acodec', 'pcm_s16le',
-            '-ar', '16000',
-            '-ac', '1',
+            '-ar', f'{self.sample_rate}',
+            '-ac', f'{self.number_of_channels}',
             'pipe:1',  # 音频输出到管道1
-            '-map', '0:v',  # 视频流
-            '-f', 'h264',   # 输出H.264裸流
-            '-vcodec', 'copy',  # 直接复制视频流，不重新编码
-            'pipe:2'  # 视频输出到管道2
+        ]
+
+        cmd_video = [
+            'ffmpeg',
+            '-i', self.rtmp_addr,
+            # 视频输出
+            '-map', '0:v',
+            '-f', 'rawvideo',
+            '-pix_fmt', 'yuv420p',
+            '-s', f'{self.width}x{self.height}',
+            '-r', f'{self.frame_rate}',  # 匹配源视频帧率
+            'pipe:1'  # 直接输出到文件
         ]
         
         self.ffmpeg_process = subprocess.Popen(
-            cmd,
-            stdout=audio_pipe,
-            stderr=video_pipe,
+            cmd_audio,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=10 * 1024 * 1024
+        )
+
+        self.ffmpeg_video_process = subprocess.Popen(
+            cmd_video,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             bufsize=50 * 1024 * 1024
         )
+
         
         self.is_running = True
         asyncio.create_task(self._read_audio_output())
@@ -154,29 +177,34 @@ class YxwLiveStreamClient:
             audio_data = await asyncio.get_event_loop().run_in_executor(
                 None, 
                 self.ffmpeg_process.stdout.read, 
-                1600
-            ) # 100ms 的音频数据
+                int(self.frame_interval * self.number_of_channels * self.sample_rate * self.bytes_per_sample / 1000 / 1000 / 1000)
+            ) # 40ms 的音频数据,与视频一帧数据对齐
             # self.ten_env.log_info(f'_read_audio_output,len:{len(audio_data)}')
             if audio_data:
                 await self.audio_queue.put(audio_data)
 
     async def _read_video_output(self) -> None:
         """读取视频数据"""
+        frame_size = int(self.width * self.height * 1.5)  # YUV420P总大小
         while self.is_running:
-            if not self.ffmpeg_process:
+            if not self.ffmpeg_video_process:
                 self.ten_env.log_error("FFmpeg 进程不存在")
                 break
-            if self.ffmpeg_process.poll() is not None:
-                self.ten_env.log_error(f"FFmpeg 进程已退出，返回码: {self.ffmpeg_process.poll()}")
+            if self.ffmpeg_video_process.poll() is not None:
+                self.ten_env.log_error(f"FFmpeg 进程已退出，返回码: {self.ffmpeg_video_process.poll()}")
                 break
             video_data = await asyncio.get_event_loop().run_in_executor(
                 None, 
-                self.ffmpeg_process.stderr.read, 
-                1024 * 1024
-            ) # 每次读取1MB
-            self.ten_env.log_info(f'_read_video_output,len:{len(video_data)}')
+                self.ffmpeg_video_process.stdout.read, 
+                frame_size
+            ) 
+            # self.ten_env.log_info(f'_read_video_output,len:{len(video_data)}')
             if video_data:
-                await self.video_queue.put(video_data)
+                if len(video_data) == frame_size:
+                    await self.video_queue.put(video_data)
+                else:
+                    self.ten_env.log_info(f"警告:期望{frame_size}字节，实际{len(video_data)}字节")
+                    continue
 
     async def read_audio_frame(self) -> bytes:
         """读取音频帧"""
@@ -226,12 +254,22 @@ class YxwLiveStreamClient:
         self.is_running = False
         
         if self.ffmpeg_process:
-            self.ffmpeg_process.send_signal(signal.SIGINT)
+            # self.ffmpeg_process.send_signal(signal.SIGINT)
+            self.ffmpeg_process.stdin.write(b'q') 
             try:
                 self.ffmpeg_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.ffmpeg_process.kill()
             self.ffmpeg_process = None
+
+        if self.ffmpeg_video_process:
+            # self.ffmpeg_process.send_signal(signal.SIGINT)
+            self.ffmpeg_video_process.stdin.write(b'q') 
+            try:
+                self.ffmpeg_video_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.ffmpeg_video_process.kill()
+            self.ffmpeg_video_process = None
             
         await self.close_websocket()
         await self.close_session()
