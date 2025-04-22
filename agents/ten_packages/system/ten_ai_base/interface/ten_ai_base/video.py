@@ -78,7 +78,7 @@ class AsyncVideoBaseExtension(AsyncExtension, ABC):
             ten_env.log_info("Cancelling the current task during flush.")
             self.current_task.cancel()
 
-    async def send_audio_out(self, ten_env: AsyncTenEnv, audio_data: bytes, **args: TTSPcmOptions) -> None:
+    async def send_audio_out(self, ten_env: AsyncTenEnv, audio_data: bytes,timestamp:int, **args: TTSPcmOptions) -> None:
         """Send audio data to output."""
         sample_rate = args.get("sample_rate", 16000)
         bytes_per_sample = args.get("bytes_per_sample", 2)
@@ -98,6 +98,7 @@ class AsyncVideoBaseExtension(AsyncExtension, ABC):
 
             if combined_data:
                 f = AudioFrame.create("pcm_frame")
+                f.set_timestamp(timestamp)
                 f.set_sample_rate(sample_rate)
                 f.set_bytes_per_sample(bytes_per_sample)
                 f.set_number_of_channels(number_of_channels)
@@ -111,13 +112,14 @@ class AsyncVideoBaseExtension(AsyncExtension, ABC):
         except Exception as e:
             ten_env.log_error(f"error sending audio frame: {traceback.format_exc()}")
 
-    async def send_video_out(self, ten_env: AsyncTenEnv, video_data: bytes, width: int, height: int, format: str = "rgba") -> None:
+    async def send_video_out(self, ten_env: AsyncTenEnv, video_data: bytes, width: int, height: int,timestamp:int, format: str = "rgba") -> None:
         """Send video data to output."""
         try:
             f = VideoFrame.create("video_frame")
+            f.set_timestamp(timestamp)
             f.set_width(width)
             f.set_height(height)
-            f.set_data_fmt(PixelFmt.PixelFmtRGBA if format == "rgba" else PixelFmt.I420)
+            f.set_pixel_fmt(PixelFmt.RGBA if format == "rgba" else PixelFmt.I420)
             f.alloc_buf(len(video_data))
             buff = f.lock_buf()
             buff[:] = video_data
