@@ -193,14 +193,14 @@ class YxwLiveStreamClient:
                 )
                 
                 # 处理音频数据
-                self.ten_env.log_info(f"读取audio帧: {len(audio_data)} 字节")
+                # self.ten_env.log_info(f"读取audio帧: {len(audio_data)} 字节")
                 if audio_data:
                     await self.audio_queue.put(audio_data)
                 
                 # 处理视频数据
                 if video_data:
                     if len(video_data) == frame_size:
-                        self.ten_env.log_info(f"读取video帧: {len(video_data)} 字节")
+                        # self.ten_env.log_info(f"读取video帧: {len(video_data)} 字节")
                         await self.video_queue.put(video_data)
                     else:
                         self.ten_env.log_info(f"警告:期望{frame_size}字节，实际{len(video_data)}字节")
