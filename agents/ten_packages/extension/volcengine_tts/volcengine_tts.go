@@ -128,7 +128,12 @@ func (v *volcengineTTS) textToSpeechStream(tenEnv ten.TenEnv, streamWriter io.Wr
 	params["request"]["text"] = text
 	params["request"]["text_type"] = "plain"
 	params["request"]["operation"] = "query"
-
+	// 添加额外参数，禁用markdown过滤
+	extraParam := map[string]interface{}{
+		"disable_markdown_filter": true,
+	}
+	extraParamJSON, _ := json.Marshal(extraParam)
+	params["request"]["extra_param"] = string(extraParamJSON)
 	headers := make(map[string]string)
 	headers["Content-Type"] = "application/json"
 	//bearerToken为saas平台对应的接入认证中的Token
