@@ -110,12 +110,12 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
                     timestamp = self.client.start_time + (self.client.audio_frame_count * self.client.frame_interval)
                     
                     # 发送音频帧
-                    ten_env.log_info(f"准备发送audio帧: {len(audio_data)} 字节")
+                    # ten_env.log_info(f"准备发送audio帧: {len(audio_data)} 字节")
                     await self.send_audio_out(ten_env, audio_data, timestamp)
                     self.client.audio_frame_count += 1
                     
                     # 发送视频帧
-                    ten_env.log_info(f"准备发送video帧: {len(video_data)} 字节")
+                    # ten_env.log_info(f"准备发送video帧: {len(video_data)} 字节")
                     await self.send_video_out(
                         ten_env=ten_env,
                         video_data=video_data,
