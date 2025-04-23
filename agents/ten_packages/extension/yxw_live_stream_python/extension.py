@@ -86,100 +86,67 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
             await super().on_start(ten_env)
             ten_env.log_debug("on_start")
             
-            # 启动读取音视频数据的任务
-            self.audio_task = asyncio.create_task(self._read_audio_frames(ten_env))
-            self.video_task = asyncio.create_task(self._read_video_frames(ten_env))
+            # 启动同步读取音视频数据的任务
+            self.av_task = asyncio.create_task(self._read_av_frames(ten_env))
             
         except Exception:
             ten_env.log_error(f"on_start failed: {traceback.format_exc()}")
 
-    async def _read_audio_frames(self, ten_env: AsyncTenEnv) -> None:
-        """读取音频帧并发送"""
+    async def _read_av_frames(self, ten_env: AsyncTenEnv) -> None:
+        """同步读取和处理音视频帧"""
         try:
-            # with open('/app/audio.pcm', 'ab') as audio_file:
-            #     while self.client.is_running:
-            #         audio_data = await self.client.read_audio_frame()
-            #         try:
-            #             # 使用追加模式打开文件，确保数据被添加到文件末尾
-            #             # 频繁打开关闭文件可能导致性能问题，但在这种情况下是必要的
-            #             # 因为我们需要确保每帧数据都被正确写入，即使程序意外终止
-            #                 # 写入当前帧的音频数据
-            #                 audio_file.write(audio_data)
-            #                 ten_env.log_info(f'已将 {len(audio_data)} 字节的PCM数据追加到 /app/audio.pcm')
-            #         except Exception as e:
-            #             ten_env.log_error(f"写入音频数据到文件时出错: {traceback.format_exc()}")
-            #     ten_env.log_info(f'_read_audio_frames over')
-            while self.client.is_running:
-                audio_data = await self.client.read_audio_frame()
-                                # 计算时间戳（纳秒）
-                timestamp = self.client.start_time + (self.client.audio_frame_count * self.client.frame_interval)
-                # ten_env.log_info(f"准备发送audio帧: {len(audio_data)} 字节")
-                await self.send_audio_out(ten_env, audio_data,timestamp)
-                self.client.audio_frame_count += 1
-        except Exception as e:
-            ten_env.log_error(f"Error reading audio frames: {traceback.format_exc()}")
-
-    async def _read_video_frames(self, ten_env: AsyncTenEnv) -> None:
-        """读取视频帧并发送"""
-        try:
-            # with open('/app/video.yuv', 'ab') as video_file:
-            #     while self.client.is_running:
-            #         video_data = await self.client.read_video_frame()
-            #         try:
-            #             # 使用追加模式打开文件，确保数据被添加到文件末尾
-            #             # 频繁打开关闭文件可能导致性能问题，但在这种情况下是必要的
-            #             # 因为我们需要确保每帧数据都被正确写入，即使程序意外终止
-
-            #                 # 写入当前帧的音频数据
-            #                 video_file.write(video_data)
-            #                 ten_env.log_info(f'已将 {len(video_data)} 字节的PCM数据追加到 /app/video.yuv')
-            #         except Exception as e:
-            #             ten_env.log_error(f"写入音频数据到文件时出错: {traceback.format_exc()}")
-            #     ten_env.log_info(f'_read_video_frames over')
-            i = 0
             while self.client.is_running:
                 start_time = time.time_ns()
                 try:
+                    # 同步读取音视频帧
+                    audio_data = await self.client.read_audio_frame()
                     video_data = await self.client.read_video_frame()
-                    if not video_data:
-                        ten_env.log_warn("收到空视频数据")
+                    
+                    if not audio_data or not video_data:
+                        ten_env.log_warn("收到空音视频数据")
                         continue
-                                    # 计算时间戳（纳秒）
-                    timestamp = self.client.start_time + (self.client.video_frame_count * self.client.frame_interval)
-                    # ten_env.log_info(f"准备发送video帧: {len(video_data)} 字节")
+                    
+                    # 计算时间戳（纳秒）
+                    timestamp = self.client.start_time + (self.client.audio_frame_count * self.client.frame_interval)
+                    
+                    # 发送音频帧
+                    ten_env.log_info(f"准备发送audio帧: {len(audio_data)} 字节")
+                    await self.send_audio_out(ten_env, audio_data, timestamp)
+                    self.client.audio_frame_count += 1
+                    
+                    # 发送视频帧
+                    ten_env.log_info(f"准备发送video帧: {len(video_data)} 字节")
                     await self.send_video_out(
                         ten_env=ten_env,
                         video_data=video_data,
                         width=self.client.width,
                         height=self.client.height,
-                        timestamp= timestamp,
+                        timestamp=timestamp,
                         format="I420"
                     )
                     self.client.video_frame_count += 1
-                    # 计算发送耗时
+                    
+                    # 计算发送耗时和等待时间
                     consume_time = time.time_ns() - start_time
-                    # 计算需要等待的时间
-                    wait_time = max(0, (self.client.frame_interval - consume_time) / 1000 / 1000 / 1000)
-                    # ten_env.log_info(f"consume_time：{consume_time},frame_interval:{self.client.frame_interval},wait_time:{wait_time}")
+                    wait_time = max(0, (self.client.frame_interval - consume_time) / 1_000_000_000)
                     if wait_time > 0:
                         await asyncio.sleep(wait_time)
-                    i = i + 1
                         
                 except Exception as e:
-                    ten_env.log_error(f"发送视频帧时出错: {str(e)}")
+                    ten_env.log_error(f"处理音视频帧时出错: {str(e)}")
                     continue
                     
         except Exception as e:
-            ten_env.log_error(f"视频帧读取任务出错: {str(e)}")
+            ten_env.log_error(f"音视频帧读取任务出错: {str(e)}")
         finally:
-            ten_env.log_info("视频帧读取任务结束")
+            ten_env.log_info("音视频帧读取任务结束")
 
     async def on_stop(self, ten_env: AsyncTenEnv) -> None:
         await super().on_stop(ten_env)
-        if self.audio_task:
-            self.audio_task.cancel()
+        if self.av_task:
+            self.av_task.cancel()
             try:
-                await self.audio_task
+                await self.av_task
             except asyncio.CancelledError:
                 pass
                 

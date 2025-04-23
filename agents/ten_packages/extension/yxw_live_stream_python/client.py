@@ -160,51 +160,56 @@ class YxwLiveStreamClient:
             bufsize=50 * 1024 * 1024
         )
 
-        
         self.is_running = True
-        asyncio.create_task(self._read_audio_output())
-        asyncio.create_task(self._read_video_output())
+        asyncio.create_task(self._read_av_output())
 
-    async def _read_audio_output(self) -> None:
-        """读取音频数据"""
-        while self.is_running:
-            if not self.ffmpeg_process:
-                self.ten_env.log_error("FFmpeg 进程不存在")
-                break
-            if self.ffmpeg_process.poll() is not None:
-                self.ten_env.log_error(f"FFmpeg 进程已退出，返回码: {self.ffmpeg_process.poll()}")
-                break
-            audio_data = await asyncio.get_event_loop().run_in_executor(
-                None, 
-                self.ffmpeg_process.stdout.read, 
-                int(self.frame_interval * self.number_of_channels * self.sample_rate * self.bytes_per_sample / 1000 / 1000 / 1000)
-            ) # 40ms 的音频数据,与视频一帧数据对齐
-            # self.ten_env.log_info(f'_read_audio_output,len:{len(audio_data)}')
-            if audio_data:
-                await self.audio_queue.put(audio_data)
-
-    async def _read_video_output(self) -> None:
-        """读取视频数据"""
-        frame_size = int(self.width * self.height * 1.5)  # YUV420P总大小
-        while self.is_running:
-            if not self.ffmpeg_video_process:
-                self.ten_env.log_error("FFmpeg 进程不存在")
-                break
-            if self.ffmpeg_video_process.poll() is not None:
-                self.ten_env.log_error(f"FFmpeg 进程已退出，返回码: {self.ffmpeg_video_process.poll()}")
-                break
-            video_data = await asyncio.get_event_loop().run_in_executor(
-                None, 
-                self.ffmpeg_video_process.stdout.read, 
-                frame_size
-            ) 
-            # self.ten_env.log_info(f'_read_video_output,len:{len(video_data)}')
-            if video_data:
-                if len(video_data) == frame_size:
-                    await self.video_queue.put(video_data)
-                else:
-                    self.ten_env.log_info(f"警告:期望{frame_size}字节，实际{len(video_data)}字节")
-                    continue
+    async def _read_av_output(self) -> None:
+        """同步读取音频和视频数据"""
+        try:
+            frame_size = int(self.width * self.height * 1.5)  # YUV420P总大小
+            audio_frame_size = int(self.frame_interval * self.number_of_channels * self.sample_rate * self.bytes_per_sample / 1000 / 1000 / 1000)
+            
+            while self.is_running:
+                # 检查进程状态
+                if not self.ffmpeg_process or not self.ffmpeg_video_process:
+                    self.ten_env.log_error("FFmpeg 进程不存在")
+                    break
+                    
+                if self.ffmpeg_process.poll() is not None or self.ffmpeg_video_process.poll() is not None:
+                    self.ten_env.log_error(f"FFmpeg 进程已退出，音频返回码: {self.ffmpeg_process.poll()}, 视频返回码: {self.ffmpeg_video_process.poll()}")
+                    break
+                
+                # 同步读取音频和视频数据
+                audio_data = await asyncio.get_event_loop().run_in_executor(
+                    None, 
+                    self.ffmpeg_process.stdout.read, 
+                    audio_frame_size
+                )
+                
+                video_data = await asyncio.get_event_loop().run_in_executor(
+                    None, 
+                    self.ffmpeg_video_process.stdout.read, 
+                    frame_size
+                )
+                
+                # 处理音频数据
+                self.ten_env.log_info(f"读取audio帧: {len(audio_data)} 字节")
+                if audio_data:
+                    await self.audio_queue.put(audio_data)
+                
+                # 处理视频数据
+                if video_data:
+                    if len(video_data) == frame_size:
+                        self.ten_env.log_info(f"读取video帧: {len(video_data)} 字节")
+                        await self.video_queue.put(video_data)
+                    else:
+                        self.ten_env.log_info(f"警告:期望{frame_size}字节，实际{len(video_data)}字节")
+                        continue
+                        
+        except Exception as e:
+            self.ten_env.log_error(f"读取音视频数据时出错: {str(e)}")
+        finally:
+            self.ten_env.log_info("音视频读取任务结束")
 
     async def read_audio_frame(self) -> bytes:
         """读取音频帧"""
