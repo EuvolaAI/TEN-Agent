@@ -30,8 +30,8 @@ class YxwLiveStreamClient:
         self.rtmp_addr: Optional[str] = None
         self.ffmpeg_process: Optional[subprocess.Popen] = None
         self.ffmpeg_video_process: Optional[subprocess.Popen] = None
-        self.audio_queue: asyncio.Queue = asyncio.Queue(maxsize=30)
-        self.video_queue: asyncio.Queue = asyncio.Queue(maxsize=30)
+        self.audio_queue: asyncio.Queue = asyncio.Queue(maxsize=1024)
+        self.video_queue: asyncio.Queue = asyncio.Queue(maxsize=1024)
         self.is_running = False
         self.loop = None
         self._on_open:Callable = None
@@ -425,3 +425,24 @@ class YxwLiveStreamClient:
                 if self._on_error is not None:
                     await self._on_error(e)
                 break
+
+    async def send_interrupt(self) -> None:
+        """发送打断命令"""
+        if not self.websocket:
+            raise Exception("WebSocket 未连接")
+            
+        params = {
+            'Header': {},
+            'Payload': {
+                "ReqId": self._get_uuid(),
+                "SessionId": self.session_id,
+                "Command": "SEND_TEXT",
+                "Data": {
+                    "Text": "",
+                    "Interrupt": True
+                }
+            }
+        }
+        
+        await self.websocket.send(json.dumps(params))
+        self.ten_env.log_info("已发送打断命令")

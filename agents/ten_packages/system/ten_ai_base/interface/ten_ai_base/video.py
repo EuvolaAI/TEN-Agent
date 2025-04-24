@@ -56,6 +56,7 @@ class AsyncVideoBaseExtension(AsyncExtension, ABC):
         cmd_name = cmd.get_name()
         async_ten_env.log_info(f"on_cmd name: {cmd_name}")
         if cmd_name == CMD_IN_FLUSH:
+            await self.on_cancel_steam(async_ten_env)
             await self.flush_input_items(async_ten_env)
             await async_ten_env.send_cmd(Cmd.create(CMD_OUT_FLUSH))
             async_ten_env.log_info("on_cmd sent flush")
@@ -77,6 +78,11 @@ class AsyncVideoBaseExtension(AsyncExtension, ABC):
         if self.current_task:
             ten_env.log_info("Cancelling the current task during flush.")
             self.current_task.cancel()
+    
+    @abstractmethod
+    async def on_cancel_steam(self, ten_env: AsyncTenEnv) -> None:
+        """Called when the TTS request is cancelled."""
+        pass
 
     async def send_audio_out(self, ten_env: AsyncTenEnv, audio_data: bytes,timestamp:int, **args: TTSPcmOptions) -> None:
         """Send audio data to output."""
