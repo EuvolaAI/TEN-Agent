@@ -168,40 +168,38 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
         
     async def process_audio(self, ten_env: AsyncTenEnv, audio:bytearray) -> None:
         try:
-            # 将PCM音频数据写入到文件
-            # try:
-            #     # 使用追加模式打开文件，确保数据被添加到文件末尾
-            #     # 频繁打开关闭文件可能导致性能问题，但在这种情况下是必要的
-            #     # 因为我们需要确保每帧数据都被正确写入，即使程序意外终止
-            #     with open('/app/input.pcm', 'ab') as audio_file:
-            #             # 写入当前帧的音频数据
-            #             audio_file.write(audio)
-            #             ten_env.log_info(f'已将 {len(audio)} 字节的PCM数据追加到 /app/input.mp3')
-            # except Exception as e:
-            #     ten_env.log_error(f"写入音频数据到文件时出错: {traceback.format_exc()}")
+        #     # 将PCM音频数据写入到文件
+        #     try:
+        #         # 使用追加模式打开文件，确保数据被添加到文件末尾
+        #         # 频繁打开关闭文件可能导致性能问题，但在这种情况下是必要的
+        #         # 因为我们需要确保每帧数据都被正确写入，即使程序意外终止
+        #         with open('/app/audio.pcm', 'ab') as audio_file:
+        #                 # 写入当前帧的音频数据
+        #                 audio_file.write(output_bytes)
+        #                 ten_env.log_info(f'已将 {len(output_bytes)} 字节的PCM数据追加到 /app/audio.pcm')
+        #     except Exception as e:
+        #         ten_env.log_error(f"写入音频数据到文件时出错: {traceback.format_exc()}")
             current_time = time.time() * 1000  # 转换为毫秒
             # 更新最后数据时间
             self.frame_lenth += len(audio)
             self.last_data_time = current_time
             self.frame_buff.extend(audio)
             
-            # 计算当前缓冲区中的音频时长（毫秒）
-            audio_duration = (self.frame_lenth * 1000) / (16000 * 2)  # 16000Hz, 16bit(2字节)
-            
-            # 只有当缓冲区中的音频时长达到160ms时才考虑发送
-            if audio_duration >= 160:
-                # 检查发送间隔
-                # if current_time - self.last_send_time < self.MIN_INTERVAL:
-                #     return
-                    
+            # 循环处理缓冲区数据
+            while len(self.frame_buff) >= 5120:
                 if self.client and self.client.websocket and not self.client.websocket.closed:
                     self.seq += 1
-                    # ten_env.log_info(f'process_audio:{self.frame_lenth}, 时长={audio_duration}ms')
-                    await self.client.send_audio_message(audio_data=bytes(self.frame_buff[:]), seq=self.seq,is_final=False)
-                    # 这里先暂时强制每次发完请求间隔120ms
-                    await asyncio.sleep(0.12)
-                    self.frame_buff.clear()   
-                    self.frame_lenth = 0   
+                    ten_env.log_info(f'process_audio: 发送 5120 字节')
+                    await self.client.send_audio_message(
+                        audio_data=bytes(self.frame_buff[:5120]), 
+                        seq=self.seq,
+                        is_final=False
+                    )
+                    # 保留剩余数据
+                    self.frame_buff = self.frame_buff[5120:]
+                    self.frame_lenth = len(self.frame_buff)
                     self.last_send_time = current_time
+                    # 强制等待 120ms
+                    await asyncio.sleep(0.12)
         except Exception as e:
             ten_env.log_error(f"error processing audio frame: {traceback.format_exc()}") 
