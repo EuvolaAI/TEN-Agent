@@ -203,3 +203,8 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
                     await asyncio.sleep(0.12)
         except Exception as e:
             ten_env.log_error(f"error processing audio frame: {traceback.format_exc()}") 
+
+    async def on_cancel_steam(self, ten_env: AsyncTenEnv) -> None:
+        # 打断
+        ten_env.log_info(f'打断stream')
+        await self.client.send_interrupt()
