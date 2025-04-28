@@ -99,3 +99,20 @@ func (p *pcm) send(tenEnv ten.TenEnv, buf []byte) (err error) {
 
 	return
 }
+
+func (p *pcm) sendFinish(tenEnv ten.TenEnv) (err error) {
+	pcmFrame, err := p.getPcmFrame(tenEnv, []byte{})
+	pcmFrame.SetTimestamp(-1)
+	if err != nil {
+		tenEnv.LogError(fmt.Sprintf("getPcmFrame failed, err: %v", err))
+		return
+	}
+
+	// send pcm
+	if err = tenEnv.SendAudioFrame(pcmFrame, nil); err != nil {
+		tenEnv.LogError(fmt.Sprintf("SendPcmFrame failed, err: %v", err))
+		return
+	}
+	tenEnv.LogInfo(fmt.Sprintf("sendFinish"))
+	return
+}

@@ -258,6 +258,7 @@ func (e *volcengineTTSExtension) OnStart(ten ten.TenEnv) {
 			}
 
 			r.Close()
+			pcm.sendFinish(ten)
 			ten.LogInfo(fmt.Sprintf("send pcm data finished, text: [%s], receivedTs: %d, readBytes: %d, sentFrames: %d, firstFrameLatency: %dms, finishLatency: %dms",
 				msg.text, msg.receivedTs, readBytes, sentFrames, firstFrameLatency, time.Since(startTime).Milliseconds()))
 		}

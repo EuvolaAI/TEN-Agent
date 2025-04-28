@@ -19,6 +19,7 @@ from ten.video_frame import VideoFrame, PixelFmt
 import asyncio
 import time
 from dataclasses import dataclass
+import uuid
 
 @dataclass
 class YxwLiveStreamConfig(BaseConfig):
@@ -42,6 +43,7 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
         self.MIN_INTERVAL = 120  # 最小发送间隔120ms
         self.SILENCE_TIMEOUT = 800  # 800ms无数据认为说话结束
         self.frame_lenth = 0
+        self.req_id:str = ""
 
     async def on_init(self, ten_env: AsyncTenEnv) -> None:
         await super().on_init(ten_env)
@@ -168,22 +170,44 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
         
     async def process_audio(self, ten_env: AsyncTenEnv, audio:bytearray) -> None:
         try:
-        #     # 将PCM音频数据写入到文件
-        #     try:
-        #         # 使用追加模式打开文件，确保数据被添加到文件末尾
-        #         # 频繁打开关闭文件可能导致性能问题，但在这种情况下是必要的
-        #         # 因为我们需要确保每帧数据都被正确写入，即使程序意外终止
-        #         with open('/app/audio.pcm', 'ab') as audio_file:
-        #                 # 写入当前帧的音频数据
-        #                 audio_file.write(output_bytes)
-        #                 ten_env.log_info(f'已将 {len(output_bytes)} 字节的PCM数据追加到 /app/audio.pcm')
-        #     except Exception as e:
-        #         ten_env.log_error(f"写入音频数据到文件时出错: {traceback.format_exc()}")
-            current_time = time.time() * 1000  # 转换为毫秒
+            # # 将PCM音频数据写入到文件
+            # try:
+            #     # 使用追加模式打开文件，确保数据被添加到文件末尾
+            #     # 频繁打开关闭文件可能导致性能问题，但在这种情况下是必要的
+            #     # 因为我们需要确保每帧数据都被正确写入，即使程序意外终止
+            #     with open('/app/audio.pcm', 'ab') as audio_file:
+            #             # 写入当前帧的音频数据
+            #             audio_file.write(audio)
+            #             ten_env.log_info(f'已将 {len(audio)} 字节的PCM数据追加到 /app/audio.pcm')
+            # except Exception as e:
+            #     ten_env.log_error(f"写入音频数据到文件时出错: {traceback.format_exc()}")
+            # current_time = time.time() * 1000  # 转换为毫秒
             # 更新最后数据时间
             self.frame_lenth += len(audio)
-            self.last_data_time = current_time
+            # self.last_data_time = current_time
             self.frame_buff.extend(audio)
+
+            if len(audio) == 0:
+                self.seq +=1
+                await self.client.send_audio_message(
+                    req_id=self.req_id,
+                    audio_data=bytes(self.frame_buff[:]),
+                    seq=self.seq,
+                    is_final=False,
+                )
+                ten_env.log_info(f'send pcm data finished')
+                await self.client.send_audio_message(
+                    req_id=self.req_id,
+                    audio_data=bytes(bytearray()),
+                    seq=self.seq,
+                    is_final=True,
+                )
+                self.frame_buff = []
+                self.frame_lenth = 0
+                self.req_id = ""
+                return
+            if self.req_id == "":
+                self.req_id = self._get_uuid()
             
             # 循环处理缓冲区数据
             while len(self.frame_buff) >= 5120:
@@ -191,6 +215,7 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
                     self.seq += 1
                     ten_env.log_info(f'process_audio: 发送 5120 字节')
                     await self.client.send_audio_message(
+                        req_id=self.req_id,
                         audio_data=bytes(self.frame_buff[:5120]), 
                         seq=self.seq,
                         is_final=False
@@ -198,7 +223,7 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
                     # 保留剩余数据
                     self.frame_buff = self.frame_buff[5120:]
                     self.frame_lenth = len(self.frame_buff)
-                    self.last_send_time = current_time
+                    # self.last_send_time = current_time
                     # 强制等待 120ms
                     await asyncio.sleep(0.12)
         except Exception as e:
@@ -208,3 +233,7 @@ class YxwLiveStreamExtension(AsyncVideoBaseExtension):
         # 打断
         ten_env.log_info(f'打断stream')
         await self.client.send_interrupt()
+        self.req_id = ""
+    
+    def _get_uuid(self) -> str:
+        return "".join(str(uuid.uuid4()).split("-"))

@@ -48,6 +48,7 @@ class YxwLiveStreamClient:
         self.height = 960
         self.frame_rate = 25
         self.frame_interval =int(1000 * 1000 * 1000 / self.frame_rate)
+        self.on_finish:Callable = None
         # self._on_receive_audio:Callable = None
     
     def on(self,on_open:Callable,on_close:Callable,on_error:Callable,on_transcript:Callable):
@@ -367,7 +368,7 @@ class YxwLiveStreamClient:
         uri = api + self._websocket_string(self.session_id)
         self.websocket = await websockets.connect(uri)
 
-    async def send_audio_message(self, audio_data: bytes, seq: int, is_final: bool = False) -> None:
+    async def send_audio_message(self, req_id:str,audio_data: bytes, seq: int, is_final: bool = False) -> None:
         """发送音频消息"""
         if not self.websocket:
             raise Exception("WebSocket 未连接")
@@ -380,7 +381,7 @@ class YxwLiveStreamClient:
         params = {
             'Header': {},
             'Payload': {
-                "ReqId": self._get_uuid(),
+                "ReqId": req_id,
                 "SessionId": self.session_id,
                 "Command": "SEND_AUDIO",
                 "Data": {
