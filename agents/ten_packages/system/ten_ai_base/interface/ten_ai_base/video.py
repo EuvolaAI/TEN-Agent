@@ -139,8 +139,11 @@ class AsyncVideoBaseExtension(AsyncExtension, ABC):
         async with self.lock:
             try:
                 frame_buf = frame.get_buf()
+                if frame.get_timestamp() == -1:
+                    await self.queue.put(bytearray())
+                    return
                 if not frame_buf:
-                    ten_env.log_warn("empty audio frame detected")
+                    ten_env.log_info("empty audio frame detected")
                     return
                 await self.queue.put(frame_buf)
             
