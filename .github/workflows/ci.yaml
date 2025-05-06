@@ -1,20 +1,20 @@
 name: CI
 
 on:
-  pull_request:
-    branches: [ "main" ]
-    paths-ignore:
-      - ".devcontainer/**"
-      - ".github/**"
-      - "!.github/workflows/ci.yaml"
-      - ".vscode/**"
-      - "docs/**"
-      - "esp32-client/**"
-      - "**.md"
-      - "Dockerfile"
-      - "docker-compose.yml"
-      - "demo/**"
-      - "playground/**"
+  # pull_request:
+  #   branches: [ "main" ]
+  #   paths-ignore:
+  #     - ".devcontainer/**"
+  #     - ".github/**"
+  #     - "!.github/workflows/ci.yaml"
+  #     - ".vscode/**"
+  #     - "docs/**"
+  #     - "esp32-client/**"
+  #     - "**.md"
+  #     - "Dockerfile"
+  #     - "docker-compose.yml"
+  #     - "demo/**"
+  #     - "playground/**"
   workflow_dispatch:
 
 jobs:
