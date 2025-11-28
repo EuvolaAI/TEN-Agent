@@ -19,7 +19,7 @@ services:
       - ten_agent_network
   ten_agent_playground:
     # image: ghcr.io/ten-framework/ten_agent_playground:0.8.0-80-g5967f0b
-    image: ghcr.io/ten-framework/ten_agent_playground:test_04190153
+    image: 584754022186.dkr.ecr.us-east-1.amazonaws.com/aibum/ten_agent_playground:latest
     container_name: ten_agent_playground
     restart: always
     ports:
@@ -52,7 +52,7 @@ services:
       - ten_agent_network
   aibum_playground:
     # image: ghcr.io/ten-framework/ten_agent_playground:0.8.0-80-g5967f0b
-    image: ghcr.io/ten-framework/aibum:test_03210123
+    image: 584754022186.dkr.ecr.us-east-1.amazonaws.com/aibum/aibum_playground:latest
     container_name: aibum_playground
     restart: always
     ports:

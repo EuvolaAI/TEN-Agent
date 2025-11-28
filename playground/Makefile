@@ -1,7 +1,7 @@
 SERVER := ten_agent_playground
 cur_dateTime := $(shell date +'%m%d%H%M')
-image_address := ghcr.io/ten-framework/${SERVER}:test_${cur_dateTime}
-image_address_aws :=  014498659012.dkr.ecr.us-east-1.amazonaws.com/aibum/${SERVER}:test_${cur_dateTime}
+image_address_aws := 584754022186.dkr.ecr.us-east-1.amazonaws.com/aibum/${SERVER}:${cur_dateTime}
+latest_aws := 584754022186.dkr.ecr.us-east-1.amazonaws.com/aibum/${SERVER}:latest
 
 
 #递归删除当前目录下所有临时文件
@@ -17,12 +17,10 @@ build: clean
 # 	# rm ${SERVER}
 # 	# docker rmi ${image_address}
 
-# uploadaws: build
-# 	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 014498659012.dkr.ecr.us-east-1.amazonaws.com
-# 	docker build -t ${image_address_aws} .
-# 	docker push ${image_address_aws}
-# 	rm ${SERVER}
-# 	docker rmi ${image_address_aws}
+upload:
+	aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 584754022186.dkr.ecr.us-east-1.amazonaws.com
+	docker build --platform linux/amd64 --build-arg DEPLOY_ENV=Production -t ${image_address_aws} -t ${latest_aws} . --push
+	docker rmi ${image_address_aws} ${latest_aws} || true
 
 # deploy: upload
 # 	kubectl set image deployment/${SERVER} ${SERVER}=${image_address}
